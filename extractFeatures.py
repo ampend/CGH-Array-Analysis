@@ -59,7 +59,7 @@ def defineControls(data): # Reads Feature Extraction output and probe IDs to det
 		match = re.match(r"(\S+)\_[RF]", data['ProbeName'])
 		data['isCNVControl'] = True
 		data['isControl'] = True
-
+	
 ###############################################################################
 def writeControlData(data):
 	if data['isControl'] is True:
@@ -80,31 +80,59 @@ def convertLog(data): # This converts log ratios from log base 10 to log base 2
 	data['log2LogRatio'] = math.log(x,2)
 
 ###############################################################################
-def getCoordinates(data): # This extracts coordinates of probes from a bed file that contains ONLY probes mappable to canFam3, if probe is missing, then default coordinates = NA remain for the probe
+def getCoordinates(coord): # This extracts coordinates of probes from a bed file that contains ONLY probes mappable to canFam3, if probe is missing, then default coordinates = NA remain for the probe
 	probeBedFile = open(options.probes,'r')
+
 
 	for line in probeBedFile:
 		line = line.rstrip()
 		line = line.split()	
-    
-		ID = line[3]
+    	
+		coordTable[line[3]] = [line[0],line[1],line[2]]
+		coord['probeID'] = line[3]
+			
+###############################################################################
+def getProbeCoordinates(data):
+	print data['name']
+	if data['name'] in coordTable:
+		data['hasCoordinates'] = True
+		data['probeChrom'] = coordTable[data['name']][0]
+		data['probeStart'] = coordTable[data['name']][1]
+		data['probeEnd'] = coordTable[data['name']][2]
+		data['probeID'] = data['name']
+	else:	
+		data['hasCoordinates'] = False
+		data['probeChrom'] = 'NA'
+		data['probeStart'] = 'NA'
+		data['probeEnd'] = 'NA'
+		data['probeID'] = 'NA'
+							
+###############################################################################
 
-		if ID == data['name']:
-			#print 'MATCH\t%s\t%s' % (data['name'],data['ProbeName'])
-			data['hasCoordinates'] = True
-			data['probeChrom'] = line[0]
-			data['probeStart'] = line[1]
-			data['probeEnd'] = line[2]
-			#shortened, non-specific probe ID
-			data['probeID'] = line[3]
-			#make_track_file(data)
+def detAutosomalControls(data):		
+	#Autosome controls
+	data['autosomeControl'] = False
+	data['yControl'] = False
+	data['xControl'] = False
+	
+	if data['probeChrom'] is 'chrX':
+		data['autosomeControl'] is True
+		data['xControl'] is True
+		data['autosomeControlCount'] += 1
+		data['xControlCount'] += 1
+	if re.match(r"ChrY\S+", data['ProbeName']) is not None: #Probe names starting with CNVControls are custom controls (N=975 on array, replicated x2)
+		data['autosomeControl'] is True
+		data['yControl'] is True
+		data['autosomeControlCount'] += 1
+		data['yControlCount'] += 1
 
 ###############################################################################
 def detProbeType(data):
 	if data['isControl'] is False:
 		if data['isCorner'] is False:
-			data['probeType'] = 'NonControl'
-			data['NonControlCount'] += 1
+			if data['autosomeControl'] is False:
+				data['probeType'] = 'NonControl'
+				data['NonControlCount'] += 1
 	if data['isAgilentControl'] is True:
 		data['probeType'] = 'AgilentControl'
 		data['AgilentControlCount'] += 1
@@ -114,6 +142,11 @@ def detProbeType(data):
 	if data['isCorner'] is True:
 		data['probeType'] = 'Corner'
 		data['CornerCount'] += 1
+	if data['autosomeControl'] is True:
+		if data['yControl'] is True:
+			data['probeType'] = 'Y_Control'
+		if data['xControl'] is True:
+			data['probeType'] = 'X_Control'
 			
 ###############################################################################
 def make_probe_stats_print_line(data):
@@ -137,6 +170,11 @@ def make_probe_stats_print_line(data):
 
 numProbes = 0
 numPassStats = 0
+
+coordTable = {}
+
+coord = {}
+getCoordinates(coord)
 
 inFile = open(options.input,'r')
 print '\nReading in probe intensity data for Sample: ', options.sample
@@ -174,6 +212,10 @@ data['NonControlCount'] = 0
 data['AgilentControlCount'] = 0
 data['CNVControlCount'] = 0
 data['CornerCount'] = 0
+data['autosomeControlCount'] = 0
+data['xControlCount'] = 0
+data['yControlCount'] = 0
+
 
 for line in inFile:
 	line = line.rstrip()
@@ -303,7 +345,7 @@ for line in inFile:
 			data['probeID'] = 'NA'
 
 			#obtains probe coordinates based on data from Probe BED file
-			getCoordinates(data)
+			getProbeCoordinates(data)
 			
 			####################
 			# Make file for R program - CGHNormaliter
@@ -313,7 +355,7 @@ for line in inFile:
 				match = re.match(r"chr(\S+)", data['probeChrom'])
 				data['shortChrom'] = match.group(1)
 			
-			
+			detAutosomalControls(data) #Determines whether probe is an autosomal (x or y) control
 			detProbeType(data) #Determines probe type : Control, NonControl, or Agilent
 			
 			if data['probeType'] is not 'Corner':
@@ -327,6 +369,7 @@ sum = data['NonControlCount'] + data['CornerCount'] + data['AgilentControlCount'
 
 print '%s probes were analyzed' % (numProbes)
 print '%s probes are Agilent controls, %s probes are our CNV controls' % (data['AgilentControlCount'],data['CNVControlCount'])
+print '%s probes are autosomal controls: %s probes for chrX and %s probes for chrY' % (data['autosomeControlCount'], data['xControlCount'], data['yControlCount'])
 print '%s probes are not controls' % (data['NonControlCount'])
 print '%s probes are assigned to corners of arrays' % (data['CornerCount'])
 
