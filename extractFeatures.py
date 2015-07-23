@@ -93,7 +93,6 @@ def getCoordinates(coord): # This extracts coordinates of probes from a bed file
 			
 ###############################################################################
 def getProbeCoordinates(data):
-	print data['name']
 	if data['name'] in coordTable:
 		data['hasCoordinates'] = True
 		data['probeChrom'] = coordTable[data['name']][0]
@@ -108,7 +107,62 @@ def getProbeCoordinates(data):
 		data['probeID'] = 'NA'
 							
 ###############################################################################
+def novelCoordinates(coord): # Stores coordinates of novel contigs within chrNovel.fa 
 
+	infofile = '/home/jmkidd/kidd-lab-scratch/feichens-projects/kmer/canFam31/unique_kmers/canFam3.1-withnovel/chromNovel.merge.info'
+	infoFile = open(infofile, 'r')
+	
+	for line in infoFile:
+		line = line.rstrip()
+		line = line.split()
+		tmp = line[0]
+		
+		if re.match(r">(\S+)", tmp) is not None:
+			match = re.match(r">(\S+)", tmp)
+			data['contigID'] = match.group(1)
+			data['offset'] = int(line[3]) - 1
+			#				chrom			start[0]	end[1]		chrom[2]	offset[3]
+			coordTable[data['contigID']] = [line[3],line[4], data['contigID'], data['offset']]
+		
+	novelfile = '/home/ampend/kidd-lab/ampend-projects/CGH_Array_Design_Dog/CGH_Array_Analysis/inputData/ProbeBEDFiles/NocanFam3Coords/novelContigs.probesel.pass.bed'
+	novelFile = open(novelfile, 'r')
+	
+	correctednovel = novelfile + '.corrected'
+	correctedNovel = open(correctednovel, 'w')	
+
+	for line in novelFile:
+		line = line.rstrip()
+		line = line.split()
+		
+		data['novelChromID'] = line[0]
+		data['probeID'] = line[3]
+	
+		if data['novelChromID'] in coordTable:
+			if data['novelChromID'] == 'zoey-scaffold-686':
+				continue
+			data['novelChrom'] = 'chrNovel'
+			#data['novelChrom'] = coordTable[data['novelChromID']][2]
+			data['novelStart'] = int(coordTable[data['novelChromID']][3]) + int(line[1])
+			data['novelEnd'] = int(coordTable[data['novelChromID']][3]) + int(line[2])
+			data['novelProbeID'] = data['probeID']
+			
+			novelTable[data['novelProbeID']] = (data['novelChrom'], data['novelStart'], data['novelEnd'],data['novelProbeID'])			
+			correctedNovel.write('%s\t%s\t%s\t%s\n' % (data['novelChrom'],data['novelStart'],data['novelEnd'],data['novelProbeID']))
+
+	cmd = 'cat %s../inputData/ProbeBEDFiles/Mappable/* %s../inputData/ProbeBEDFiles/NocanFam3Coords/ChrY.probesel.pass.bed %s../inputData/ProbeBEDFiles/NocanFam3Coords/LINEs_RefInsertions.probesel.bed.pass.bed.sorted %s../inputData/ProbeBEDFiles/NocanFam3Coords/novelContigs.probesel.pass.bed.corrected %s../inputData/ProbeBEDFiles/NocanFam3Coords/SINEs_ReferenceInsertions.probesel.pass.bed.sorted > %s../inputData/ProbeBEDFiles/TOTAL_Probes_FINALCoordinates_all.bed' % (options.directory, options.directory, options.directory, options.directory, options.directory, options.directory)
+	print cmd
+	genutils.runCMD(cmd)
+		
+###############################################################################
+def getNovelProbeCooordinates(data):
+	if data['name'] in novelTable:
+		data['probeChrom'] = novelTable[data['name']][0]
+		data['probeStart'] = novelTable[data['name']][1]
+		data['probeEnd'] = novelTable[data['name']][2]
+		data['probeID'] = novelTable[data['name']][3]
+
+
+###############################################################################
 def detAutosomalControls(data):		
 	#Autosome controls
 	data['autosomeControl'] = False
@@ -168,10 +222,12 @@ def make_probe_stats_print_line(data):
 		
 ###############################################################################
 
+
 numProbes = 0
 numPassStats = 0
 
 coordTable = {}
+novelTable = {}
 
 coord = {}
 getCoordinates(coord)
@@ -200,9 +256,8 @@ nonControlFile = open(noncontrolfile,'w')
 print 'Writing probe intensity data for noncontrols only to', noncontrolfile
 print '\n'
 
-
 ##WRITING HEADERS FOR OUTFILES
-outFile.write('SampleID\tFeatureNumber\tProbeID\tProbeType\tLog2Ratio(Red/Green)\tProcessedRedSignal\tProcessedGreenSignal\tChromosome\tStart\tEnd\n') #header line
+outFile.write('SampleID\tFeatureNumber\tProbeType\tProbeID\tLog2Ratio(Red/Green)\tProcessedRedSignal\tProcessedGreenSignal\tChromosome\tStart\tEnd\n') #header line
 controlFile.write('SampleID\tProbeID\tRedProcessedSignal\tGreenProcessedSignal\tLog2Ratio(log2(RProcessed/GProcessed))\n')
 nonControlFile.write('SampleID\tProbeID\tRedProcessedSignal\tGreenProcessedSignal\tLog2Ratio(log2(RProcessed/GProcessed))\n')
 
@@ -216,6 +271,7 @@ data['autosomeControlCount'] = 0
 data['xControlCount'] = 0
 data['yControlCount'] = 0
 
+novelCoordinates(coord)
 
 for line in inFile:
 	line = line.rstrip()
@@ -346,6 +402,7 @@ for line in inFile:
 
 			#obtains probe coordinates based on data from Probe BED file
 			getProbeCoordinates(data)
+			getNovelProbeCooordinates(data)
 			
 			####################
 			# Make file for R program - CGHNormaliter
@@ -369,7 +426,7 @@ sum = data['NonControlCount'] + data['CornerCount'] + data['AgilentControlCount'
 
 print '%s probes were analyzed' % (numProbes)
 print '%s probes are Agilent controls, %s probes are our CNV controls' % (data['AgilentControlCount'],data['CNVControlCount'])
-print '%s probes are autosomal controls: %s probes for chrX and %s probes for chrY' % (data['autosomeControlCount'], data['xControlCount'], data['yControlCount'])
+#print '%s probes are autosomal controls: %s probes for chrX and %s probes for chrY' % (data['autosomeControlCount'], data['xControlCount'], data['yControlCount'])
 print '%s probes are not controls' % (data['NonControlCount'])
 print '%s probes are assigned to corners of arrays' % (data['CornerCount'])
 

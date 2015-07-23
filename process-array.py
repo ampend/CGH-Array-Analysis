@@ -3,12 +3,13 @@
 import numpy as np
 import genutils
 import os
+import re
 from optparse import  OptionParser
 
 
 ###############################################################################
 USAGE = """
-python make_tracks.py 		--input < README FILE > 
+python process-array.py 	--input < README FILE > 
 							--directory < Directory to write output files >
 
 input == README file
@@ -44,11 +45,19 @@ def process_array_line(line):
         myData['isAuto'] = False
     if myData['chrom'] == 'NA':
         myData['isAuto'] = False
+    if re.match(r"wolf(\S+)", myData['chrom']) is not None:
+    	myData['isAuto'] = True
+    	myData['chrom'] == 'Novel'
+    if re.match(r"zoey(\S+)", myData['chrom']) is not None:
+		myData['isAuto'] = True	
+		myData['chrom'] == 'Novel'
     myData['log2'] = np.log2( myData['red'] / myData['green'] )
+    
     return myData
     
 ###############################################################################    
 def make_track_file(line):
+	#canFam3 track files
 	trackfile = options.directory + 'UCSCTracks/' + sample + '.tracks'
 	trackFile = open(trackfile, 'w')
 	
@@ -105,7 +114,64 @@ def make_track_file(line):
 	trackFile.write('\tLineOnOff on\n')
 	trackFile.write('\tyLineMark 0.0\n')
 	trackFile.write('\tcolor 0,255,0\n\n')	
+	
+	#Novel sequence track files
+	noveltrackFile = options.directory + 'NovelTracks/' + sample + '.tracks'
+	novelTrackFile = open(noveltrackFile, 'w')
+	
+	novelTrackFile.write('track aCGH_%s_multiwig\n' % sample)
+	novelTrackFile.write('type bigWig\n')
+	novelTrackFile.write('container multiWig\n')
+	novelTrackFile.write('shortLabel aCGH_%s_multiwig\n' % sample)
+	novelTrackFile.write('longLabel Mean corrected log2 ratios relative to controls only DROP probes\n')
+	novelTrackFile.write('aggregate transparentOverlay\n')
+	novelTrackFile.write('showSubtrackColoronUi on\n')
+	novelTrackFile.write('maxHeightPixels 500:100:8\n')
+	novelTrackFile.write('viewLimits -3:3\n\n')
 
+	novelTrackFile.write('\ttrack aCGH_%s_grey\n' % sample)
+	novelTrackFile.write('\tparent aCGH_%s_multiwig\n' % sample)
+	novelTrackFile.write('\ttype bigWig\n')
+	novelTrackFile.write('\tbigDataUrl %s_grey.bw\n' % sample)
+	novelTrackFile.write('\tshortLabel aCGH_%s_grey\n' % sample)
+	novelTrackFile.write('\tlongLabel aCGH_%s_grey\n' % sample)
+	novelTrackFile.write('\tgraphTypeDefault bar\n')
+	novelTrackFile.write('\tLineOnOff on\n')
+	novelTrackFile.write('\tyLineMark 0.0\n')
+	novelTrackFile.write('\tcolor 163,163,163\n\n')
+
+	novelTrackFile.write('\ttrack aCGH_%s_black\n' % sample)
+	novelTrackFile.write('\tparent aCGH_%s_multiwig\n' % sample)
+	novelTrackFile.write('\ttype bigWig\n')
+	novelTrackFile.write('\tbigDataUrl %s_black.bw\n' % sample)
+	novelTrackFile.write('\tshortLabel aCGH_%s_black\n' % sample)
+	novelTrackFile.write('\tlongLabel aCGH_%s_black\n' % sample)
+	novelTrackFile.write('\tgraphTypeDefault bar\n')
+	novelTrackFile.write('\tLineOnOff on\n')
+	novelTrackFile.write('\tyLineMark 0.0\n')
+	novelTrackFile.write('\tcolor 0,0,0\n\n')	
+
+	novelTrackFile.write('\ttrack aCGH_%s_red\n' % sample)
+	novelTrackFile.write('\tparent aCGH_%s_multiwig\n' % sample)
+	novelTrackFile.write('\ttype bigWig\n')
+	novelTrackFile.write('\tbigDataUrl %s_red.bw\n' % sample)
+	novelTrackFile.write('\tshortLabel aCGH_%s_red\n' % sample)
+	novelTrackFile.write('\tlongLabel aCGH_%s_red\n' % sample)
+	novelTrackFile.write('\tgraphTypeDefault bar\n')
+	novelTrackFile.write('\tLineOnOff on\n')
+	novelTrackFile.write('\tyLineMark 0.0\n')
+	novelTrackFile.write('\tcolor 255,0,0\n\n')	
+			
+	novelTrackFile.write('\ttrack aCGH_%s_green\n' % sample)
+	novelTrackFile.write('\tparent aCGH_%s_multiwig\n' % sample)
+	novelTrackFile.write('\ttype bigWig\n')
+	novelTrackFile.write('\tbigDataUrl %s_green.bw\n' % sample)
+	novelTrackFile.write('\tshortLabel aCGH_%s_green\n' % sample)
+	novelTrackFile.write('\tlongLabel aCGH_%s_green\n' % sample)
+	novelTrackFile.write('\tgraphTypeDefault bar\n')
+	novelTrackFile.write('\tLineOnOff on\n')
+	novelTrackFile.write('\tyLineMark 0.0\n')
+	novelTrackFile.write('\tcolor 0,255,0\n\n')
 ###############################################################################    
 def make_stats_line(data):
 	nl = []
@@ -164,6 +230,7 @@ statsFile.write('AutosomalSD\tLessThan1.5SDRange\tBetween1.5-2SDRange\tGreaterTh
 lineNumber = 0 
 
 trackDirectory = options.directory + 'UCSCTracks/'
+novelDirectory = options.directory + 'NovelTracks/'
 
 arrayCount = 0 
 
@@ -217,6 +284,7 @@ for line in readmeFile:
 				else:
 					chrXControl.append(probe['log2'])
 		
+		# AUTOSOMES
 		data['autoProbeCount'] = len(autoControl)
 		print 'Autosomes %i probes' % (len(autoControl))            
 		autoMean = np.mean(autoControl)
@@ -230,14 +298,13 @@ for line in readmeFile:
 		data['autoMin'] = autoMin 
 		data['autoMax'] = autoMax 
 
-		
+		# CHROMOSOME X
 		data['chrXProbeCount'] = len(chrXControl)
 		print 'chrX %i probes' % (len(chrXControl))            
 		chrXMean = np.mean(chrXControl)
 		chrXMed = np.median(chrXControl)
 		chrXMin = min(chrXControl)
-		chrXMax = max(chrXControl)
-		
+		chrXMax = max(chrXControl)		
 		print 'Mean %f median %f' % (chrXMean,chrXMed)
 		print 'Min %f Max %f' % (chrXMin,chrXMax)
 		data['chrXMean'] = chrXMean
@@ -245,7 +312,7 @@ for line in readmeFile:
 		data['chrXMin'] = chrXMean
 		data['chrXMax'] = chrXMean
 
-		
+		# CALCULATING CORRECTION FACTOR
 		corfactor = 0.0 - autoMean
 		print 'correction factor is %f' % corfactor
 		print 'Applying to all data'
@@ -428,8 +495,142 @@ for line in readmeFile:
 		os.unlink('unsorted.bedGraph')
 		#os.unlink('sorted.bedGraph')
 
+
+		# make bed graph file
+		novelFile = open('novel.unsorted.bedGraph','w')
+		
+		for probe in probeDataList:
+			if probe['chrom'] in ['NA']:
+				continue
+			if 'DROP' in probe['probeName']:
+				continue
+			if re.match(r"chr(\d+)", probe['chrom']) is not None:
+				continue
+			if probe['chrom'] == 'chrX':
+				continue				
+			else:				
+				d = [probe['chrom'],probe['startPos'],int(probe['endPos']),probe['log2']]
+			
+				d = [str(i) for i in d]
+			
+				nl = '\t'.join(d) + '\n'
+				novelFile.write(nl)
+		novelFile.close()
+		
+		#sort cmd
+		cmd = 'sort -k1,1 -k2,2n novel.unsorted.bedGraph > novel.sorted.bedGraph'
+		print cmd
+		genutils.runCMD(cmd)
+		
+		#novel_chromSizesFile = '/home/jmkidd/kidd-lab-scratch/feichens-projects/kmer/canFam31/unique_kmers/canFam3.1-withnovel/canFam3.1.withUn.withNovel.fa.fai'
+		novel_chromSizesFile = '/home/ampend/kidd-lab/ampend-projects/CGH_Array_Design_Dog/CGH_Array_Analysis/inputData/NovelGenome/novelGenome.chrom.sizes'
+		
+		cmd = 'bedGraphToBigWig novel.sorted.bedGraph %s %s%s.bw' % (novel_chromSizesFile, novelDirectory, sample)
+		print cmd
+		genutils.runCMD(cmd)
+		
+		# now to setup for a multi track hub
+		
+		
+		
+		#0-1.5 std grey
+		#1.5 to 2 black
+		#>2 green/red
+		
+		# GREY BIGWIG		
+		lower = autoMean - 1.5 * autoSd
+		upper = autoMean + 1.5 * autoSd
+		outFile = open('tmp.grey.bedGraph','w')
+		inFile = open('novel.sorted.bedGraph','r')
+		for line in inFile:
+			ol = line
+			line = line.rstrip()
+			line = line.split()
+			l2 = float(line[3])
+			if l2 >= lower and l2 <= upper:
+				outFile.write(ol)    
+		inFile.close()
+		outFile.close()
+		cmd = 'bedGraphToBigWig tmp.grey.bedGraph %s %s%s_grey.bw' % (novel_chromSizesFile, novelDirectory, sample)
+		print cmd
+		genutils.runCMD(cmd)
+		
+		
+		lower1 = autoMean - 1.5 * autoSd
+		lower2 = autoMean - 2.0 * autoSd
+		
+		upper1 = autoMean + 1.5 * autoSd
+		upper2 = autoMean + 2.0 * autoSd
+		
+		##SD Cut-offs
+		data['firstSDRange'] = '<' + str(upper)
+		data['lowerSDRange'] = '+/-' + str(upper1)
+		data['upperSDRange'] = '+/-' + str(upper2)
+		
+		###MAKING BIGWIG FILES
+		# BLACK BIGWIG		
+		outFile = open('tmp.black.bedGraph','w')
+		inFile = open('novel.sorted.bedGraph','r')
+		for line in inFile:
+			ol = line
+			line = line.rstrip()
+			line = line.split()
+			l2 = float(line[3])
+			if l2 >= lower2 and l2 < lower1:
+				outFile.write(ol)    
+			if l2 > upper1 and l2 <= upper2:
+				outFile.write(ol)    
+		inFile.close()
+		outFile.close()
+		cmd = 'bedGraphToBigWig tmp.black.bedGraph %s %s%s_black.bw' % (novel_chromSizesFile, novelDirectory, sample)
+		print cmd
+		genutils.runCMD(cmd)		
+		
+		# GREEN BIGWIG
+		outFile = open('tmp.green.bedGraph','w')
+		inFile = open('novel.sorted.bedGraph','r')
+		for line in inFile:
+			ol = line
+			line = line.rstrip()
+			line = line.split()
+			l2 = float(line[3])
+			if l2  < lower2:
+				outFile.write(ol)    
+		inFile.close()
+		outFile.close()
+		cmd = 'bedGraphToBigWig tmp.green.bedGraph %s %s%s_green.bw' % (novel_chromSizesFile, novelDirectory, sample)
+		print cmd
+		genutils.runCMD(cmd)
+
+		# RED BIGWIG		
+		outFile = open('tmp.red.bedGraph','w')
+		inFile = open('novel.sorted.bedGraph','r')
+		for line in inFile:
+			ol = line
+			line = line.rstrip()
+			line = line.split()
+			l2 = float(line[3])
+			if l2  > upper2:
+				outFile.write(ol)    
+		inFile.close()
+		outFile.close()
+		cmd = 'bedGraphToBigWig tmp.red.bedGraph %s %s%s_red.bw' % (novel_chromSizesFile, novelDirectory, sample)
+		print cmd
+		genutils.runCMD(cmd)
+		
+		nl = make_stats_line(data)
+		statsFile.write(nl)		
+		
+		os.unlink('tmp.red.bedGraph')
+		os.unlink('tmp.green.bedGraph')
+		os.unlink('tmp.black.bedGraph')
+		os.unlink('tmp.grey.bedGraph')
+		os.unlink('novel.unsorted.bedGraph')
+		#os.unlink('sorted.bedGraph')
+		
 		#if arrayCount == 1:
 			#break	
+
 
 print '\n\nTotal arrays read...', arrayCount
 
@@ -438,6 +639,11 @@ print cmd
 genutils.runCMD(cmd)
 
 print 'Writing merged track files for subsequent upload to trackDb file to file: %sTotalTracks.txt' % (trackDirectory) 
+
+cmd = 'cat %s*tracks > %sTotalTracks.txt' % (novelDirectory, novelDirectory)
+print cmd
+genutils.runCMD(cmd)
+
 print 'DONE!!\n'
 
 

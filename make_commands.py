@@ -9,22 +9,26 @@ from optparse import  OptionParser
 USAGE = """
 python make_commands.py 	--input < README FILE > 
 							--directory < Current working directory with scripts >
+							--probes < Probe BED file for extractFeatures.py to use > 
 
 input == README file
 directory == Directory to write output files 
+probes == Probe BED file for extractFeatures.py to use
 
 """
 
 parser = OptionParser(USAGE)
 parser.add_option('--input',dest='input', help = 'input Agilent Feature Extraction output')
 parser.add_option('--directory',dest='directory', help = 'Directory to write output files')
+parser.add_option('--probes',dest='probes', help = 'Probe BED file for extractFeatures.py to use')
 (options, args) = parser.parse_args()
 
 if options.input is None:
     parser.error('input probe file name not given')
 if options.directory is None:
     parser.error('output probe file name not given')
-
+if options.probes is None:
+    parser.error('output probe file name not given')
 
 ###############################################################################
 
@@ -47,7 +51,7 @@ for line in readmeFile:
 		sample = line[0]
 		input = line[8]
 		
-		cmdFile.write('python %sextractFeatures.py --input %s --sample %s --directory ../results/ --probes ../inputData/ProbeBEDFiles/Mappable/TotalProbes_FINAL_Coordinates.bed\n' % (options.directory, input, sample))
+		cmdFile.write('python %sextractFeatures.py --input %s --sample %s --directory ../results/ --probes %s\n' % (options.directory, input, sample, options.probes))
 
 cmd = 'qsub %srun-jobs.pbs' % options.directory
 print cmd
