@@ -30,31 +30,65 @@ if options.directory is None:
 
 ###############################################################################
 def process_array_line(line):
-    myData = {}
-    myData['probeName'] = line[3]
-    myData['probeClass'] = line[2]
-    myData['chrom'] = line[7]
-    myData['startPos'] = line[8]
-    myData['endPos'] = line[9]
-    myData['red'] = float(line[5])
-    myData['green'] = float(line[6])
-    myData['isAuto'] = True
-    if myData['chrom'] == 'chrY':
-        myData['isAuto'] = False
-    if myData['chrom'] == 'chrX':
-        myData['isAuto'] = False
-    if myData['chrom'] == 'NA':
-        myData['isAuto'] = False
-    if re.match(r"wolf(\S+)", myData['chrom']) is not None:
-    	myData['isAuto'] = True
-    	myData['chrom'] == 'Novel'
-    if re.match(r"zoey(\S+)", myData['chrom']) is not None:
-		myData['isAuto'] = True	
+	myData = {}
+	myData['sampleID'] = data['sample']
+	myData['probeName'] = line[3]
+	myData['probeClass'] = line[2]
+	myData['chrom'] = line[7]
+	myData['startPos'] = line[8]
+	myData['endPos'] = line[9]
+	myData['red'] = float(line[5])
+	myData['green'] = float(line[6])
+	
+	#Defaults
+	myData['isAuto'] = True
+	myData['probeType'] = 'Other'
+	myData['controlClass'] = 'Noncontrol'
+	#Calc log2
+	myData['log2'] = np.log2(myData['red']/myData['green'])
+	myData['log2Red'] = np.log2(myData['red'])
+	myData['log2Green'] = np.log2(myData['green'])
+		
+	if myData['chrom'] == 'chrY':
+		myData['isAuto'] = False
+	if myData['chrom'] == 'chrX':
+		myData['isAuto'] = False		
+	if myData['chrom'] == 'NA':
+		myData['isAuto'] = False
+	if re.match(r"wolf(\S+)", myData['chrom']) is not None:
+		myData['isAuto'] = True
 		myData['chrom'] == 'Novel'
-    myData['log2'] = np.log2( myData['red'] / myData['green'] )
-    
-    return myData
-    
+	if re.match(r"zoey(\S+)", myData['chrom']) is not None:
+		myData['isAuto'] = True
+		myData['chrom'] == 'Novel'
+
+	if myData['probeClass'] == 'AgilentControl':
+		myData['controlClass'] = 'AgilentControl'
+		myData['probeType'] = 'AgilentControl'
+	if 'CNVControl' in myData['probeName']:
+		if myData['chrom'] == 'chrX':
+			myData['controlClass'] = 'SexChromControl'
+		if myData['isAuto'] is True:
+			myData['controlClass'] = 'AutosomeControl'
+	if 'chrY' in myData['chrom']:
+		myData['probeType'] = 'chrY'
+	if 'DROP' in myData['probeName']:
+		myData['probeType'] = 'DROP'
+	if 'CNVControl' in myData['probeName']:
+		myData['probeType'] = 'CNVControl'
+	if myData['chrom'] == 'chrNovel':
+		myData['probeType'] = 'Novel'
+	if 'SINE' in myData['probeName']:
+		myData['probeType'] = 'SINE'
+	if 'LINE' in myData['probeName']:
+		myData['probeType'] = 'LINE'
+	if 'ERV' in myData['probeName']:
+		myData['probeType'] = 'ERV'
+	if 'umt' in myData['probeName']:
+		myData['probeType'] = 'NUMT'
+		
+	return myData
+
 ###############################################################################    
 def make_track_file(line):
 	#canFam3 track files
@@ -210,9 +244,88 @@ def make_stats_line(data):
 	
 	nl = [str(j) for j in nl]
 	nl = '\t'.join(nl) + '\n'
-	return nl
-	
-###############################################################################    
+	return nl	
+###############################################################################
+def write_R_cmds(data):
+	print 'test'
+	rFile.write('require(sm)\n')
+	rFile.write('require(vioplot)\n')
+
+	rFile.write('data <- read.table("%s_ProbeData.txt", header = TRUE)\n' % (data['sample']))
+	rFile.write('colnames(data) <- c("Sample", "ProbeID", "ProbeClass", "ProbeType", "ProbeChrom", "ProbeStart", "ProbeEnd", "Corr_Log2", "Corr_Red", "Corr_Green", "Uncorr_Log2", "Uncorr_Red", "Uncorr_Green", "Sex")\n')
+	rFile.write('sample <- as.factor(unlist(data[1]))\n')
+	rFile.write('probeID <- as.factor(unlist(data[2]))\n')
+	rFile.write('probeClass <- as.factor(unlist(data[3]))\n')
+	rFile.write('probeType <- as.factor(unlist(data[4]))\n')
+	rFile.write('probeChrom <- as.factor(unlist(data[5]))\n')
+	rFile.write('probeStart <- sapply(data[6],as.numeric)\n')
+	rFile.write('probeEnd <- sapply(data[7],as.numeric)\n')
+	rFile.write('corrLog2 <- sapply(data[8],as.numeric)\n')
+	rFile.write('corrRed <- sapply(data[9],as.numeric)\n')
+	rFile.write('corrGreen <- sapply(data[10],as.numeric)\n')
+	rFile.write('uncorrLog2 <- sapply(data[11],as.numeric)\n')
+	rFile.write('uncorrRed <- sapply(data[12],as.numeric)\n')
+	rFile.write('uncorrGreen <- sapply(data[13],as.numeric)\n')
+	rFile.write('sex <- as.factor(unlist(data[14]))\n')
+
+	rFile.write('#Defining Dataframe Variables\n')
+	rFile.write('Dataframe <- data.frame(probeClass, corrLog2)\n')
+	rFile.write('sex <- Dataframe$Corr_Log2[Dataframe$probeClass==\'SexChromControl\']\n')
+	rFile.write('auto <- Dataframe$Corr_Log2[Dataframe$probeClass==\'AutosomeControl\']\n')
+	rFile.write('non <- Dataframe$Corr_Log2[Dataframe$probeClass==\'Noncontrol\']\n')
+
+	rFile.write('pdf(file="%s_aCGHPlots.pdf", width = 7,height = 10)\n' % (data['sample']))
+	rFile.write('par(mfrow=c(1,1), mai=c(1,0.5,0.5,0.25), pin=c(5,5))\n')
+	rFile.write('#Making Log2 Boxplots\n')
+	rFile.write('plot(1,1,xlim=c(0,4),ylim=range(c(sex,auto,non)),type="n", xlab="Control Types",ylab="Corrected Log2 Ratios",axes=FALSE, cex.main=0.75, cex.lab=0.75, cex.axis=0.75)\n')
+	rFile.write('axis(side=1,at=1:3,labels=c("Sex Chrom.","Autosome","Noncontrol"), cex.main=0.75, cex.lab=0.75, cex.axis=0.75)\n')
+	rFile.write('axis(side=2)\n')
+	rFile.write('boxplot(sex, at = 1, add=TRUE)\n')
+	rFile.write('boxplot(auto, at = 2, add=TRUE)\n')
+	rFile.write('boxplot(non, at = 3, add = TRUE, main = "Corrected Log2 Ratios for %s (%s)")\n' % (data['sample'], data['Sex']))
+	rFile.write('#Making Log2 Violin Plots\n')
+	rFile.write('plot(1,1,xlim=c(0,4),ylim=range(c(sex,auto,non)),type="n", xlab="Control Types",ylab="Corrected Log2 Ratios",axes=FALSE)\n')
+	rFile.write('axis(side=1,at=1:3,labels=c("Sex Chrom.","Autosome","Noncontrol"), cex.main=0.75, cex.lab=0.75, cex.axis=0.75)\n')
+	rFile.write('axis(side=2)\n')
+	rFile.write('vioplot(sex, at = 1, add=TRUE, col="lightskyblue2")\n')
+	rFile.write('vioplot(auto, at = 2, add=TRUE, col="lightskyblue3")\n')
+	rFile.write('vioplot(non, at = 3, add=TRUE, col="lightskyblue4")\n')
+	rFile.write('title("Corrected Log2 Ratios for %s (%s)")\n' % (data['sample'], data['Sex']))
+
+	rFile.write('colorDataframe <- data.frame(probeClass, corrRed, corrGreen)\n')
+	rFile.write('sexRed <- colorDataframe$Corr_Red[Dataframe$probeClass==\'SexChromControl\']\n')
+	rFile.write('autoRed <- colorDataframe$Corr_Red[Dataframe$probeClass==\'AutosomeControl\']\n')
+	rFile.write('nonRed <- colorDataframe$Corr_Red[Dataframe$probeClass==\'Noncontrol\']\n')
+	rFile.write('sexGreen <- colorDataframe$Corr_Green[Dataframe$probeClass==\'SexChromControl\']\n')
+	rFile.write('autoGreen <- colorDataframe$Corr_Green[Dataframe$probeClass==\'AutosomeControl\']\n')
+	rFile.write('nonGreen <- colorDataframe$Corr_Green[Dataframe$probeClass==\'Noncontrol\']\n')
+
+	rFile.write('###Corrected Red/Green Intensities\n')
+	rFile.write('# Boxplots\n')
+	rFile.write('plot(2,2,xlim=c(0,7),ylim=range(c(sexRed,autoRed,nonRed,sexGreen,autoGreen,nonGreen)),type="n", xlab="Control Types",ylab="Corrected Log2 Probe Intensities",axes=FALSE)\n')
+	rFile.write('axis(side=1,at=1:6,labels=c("SexChr\\n(Red)", "Auto\\n(Red)", "Non\\n(Red)", "SexChr\\n(Green)", "Auto\\n(Green)", "Non\\n(Green)"), cex.main=0.75, cex.lab=0.55, cex.axis=0.55)\n')
+	rFile.write('axis(side=2)\n')
+	rFile.write('boxplot(sexRed, at = 1, add=TRUE)\n')
+	rFile.write('boxplot(autoRed, at = 2, add=TRUE)\n')
+	rFile.write('boxplot(nonRed, at = 3, add = TRUE)\n')
+	rFile.write('boxplot(sexGreen, at = 4, add=TRUE)\n')
+	rFile.write('boxplot(autoGreen, at = 5, add=TRUE)\n')
+	rFile.write('boxplot(nonGreen, at = 6, add = TRUE, main = "Corrected Log2 Red/Green Intensities for %s (%s)")\n' % (data['sample'], data['Sex']))
+
+	rFile.write('# Violin Plots\n')
+	rFile.write('plot(2,2,xlim=c(0,7),range(c(sexRed,autoRed,nonRed,sexGreen,autoGreen,nonGreen)),type="n", xlab="Control Types",ylab="Corrected Log2 Probe Intensities",axes=FALSE, main = "Corrected Red and Green Probe Intensities for %s (%s)")\n' % (data['sample'], data['Sex']))
+	rFile.write('axis(side=1,at=1:6,labels=c("SexChr\\n(Red)", "Auto\\n(Red)", "Non\\n(Red)", "SexChr\\n(Green)", "Auto\\n(Green)", "Non\\n(Green)"), cex.main=0.75, cex.lab=0.55, cex.axis=0.55)\n')
+	rFile.write('axis(side=2)\n')
+	rFile.write('vioplot(sexRed, at = 1, add=TRUE, col="tomato2")\n')
+	rFile.write('vioplot(autoRed, at = 2, add=TRUE, col="tomato3")\n')
+	rFile.write('vioplot(nonRed, at = 3, add=TRUE, col="tomato4")\n')
+	rFile.write('vioplot(sexGreen, at = 4, add=TRUE, col="palegreen2")\n')
+	rFile.write('vioplot(autoGreen, at = 5, add=TRUE, col="palegreen3")\n')
+	rFile.write('vioplot(nonGreen, at = 6, add=TRUE, col="palegreen4")\n')
+
+	rFile.write('title("Corrected Red and Green Probe Intensities for %s (%s)")\n' % (data['sample'], data['Sex']))
+	rFile.write('dev.off()\n')	
+###############################################################################        
 
 readme_file = options.input 
 readmeFile = open(readme_file, 'r')
@@ -248,11 +361,15 @@ for line in readmeFile:
 		data['DateScanned'] = line[1]
 		data['ScanNumber'] = line[2]
 		data['SlideNumber'] = line[3]
-		data['DLRS'] = line[4]
-		data['Sex'] = line[5]
-		data['GeographicOrigin'] = line[6]
-		data['CanineType'] = line[7]
+		data['DLRS'] = line[7]
+		data['Sex'] = line[4]
+		data['GeographicOrigin'] = line[5]
+		data['CanineType'] = line[6]
 		data['RawDataFile'] = line[8]
+
+		probefile = options.directory + data['sample'] + '_ProbeData.txt'
+		probeFile = open(probefile, 'w')
+		probeFile.write('SampleID\tProbeName\tControlClass\tProbeType\tChrom\tStartPos\tEndPos\tCorrectedLog2Ratio\tCorrectedRedIntensity\tCorrectedGreenIntensity\tUncorrectedLog2Ratio\tUncorrectedRedIntensity\tUncorrectedGreenIntensity\tSex\n')
 
 		make_track_file(line)
 		
@@ -275,51 +392,124 @@ for line in readmeFile:
 		print '\nProcessing probe data for sample\n',  sample
 		print 'Read in for %i probes' % len(probeDataList)
 		
+		#log2
 		autoControl = []
 		chrXControl = []
+		#probe intensities log2 red/green
+		autoControlRed = []
+		autoControlGreen = []
+		chrXControlRed = []
+		chrXControlGreen = []
+		
 		for probe in probeDataList:
 			if probe['probeClass'] == 'CNVControl':
 				if probe['isAuto'] is True:
 					autoControl.append(probe['log2'])
+					autoControlRed.append(probe['log2Red'])
+					autoControlGreen.append(probe['log2Green'])
 				else:
 					chrXControl.append(probe['log2'])
+					chrXControlRed.append(probe['log2Red'])
+					chrXControlGreen.append(probe['log2Green'])
 		
-		# AUTOSOMES
+		### AUTOSOMES
 		data['autoProbeCount'] = len(autoControl)
 		print 'Autosomes %i probes' % (len(autoControl))            
+		#Log2
 		autoMean = np.mean(autoControl)
 		autoMed = np.median(autoControl)
 		autoMin = min(autoControl)
 		autoMax = max(autoControl)
-		print 'Mean %f median %f' % (autoMean,autoMed)
+		print '#AutoLog2\nMean %f median %f' % (autoMean,autoMed)
 		print 'Min %f Max %f' % (autoMin,autoMax)
 		data['autoMean'] = autoMean 
 		data['autoMed'] = autoMed 
 		data['autoMin'] = autoMin 
 		data['autoMax'] = autoMax 
+		#Red
+		autoMeanRed = np.mean(autoControlRed)
+		autoMedRed = np.median(autoControlRed)
+		autoMinRed = min(autoControlRed)
+		autoMaxRed = max(autoControlRed)
+		print '#Auto_Red\nMean Red = %f Median Red = %f' % (autoMeanRed,autoMedRed)
+		print 'Min Red = %f Max Red = %f' % (autoMinRed,autoMaxRed)
+		data['autoMeanRed'] = autoMeanRed
+		data['autoMedRed'] = autoMedRed 
+		data['autoMinRed'] = autoMinRed 
+		data['autoMaxRed'] = autoMaxRed 
+		#Green
+		autoMeanGreen = np.mean(autoControlGreen)
+		autoMedGreen = np.median(autoControlGreen)
+		autoMinGreen = min(autoControlGreen)
+		autoMaxGreen = max(autoControlGreen)
+		print '#Auto_Green\nMean Green = %f Median Green = %f' % (autoMeanGreen,autoMedGreen)
+		print 'Min = %f Max = %f' % (autoMin,autoMax)
+		data['autoMeanGreen'] = autoMeanGreen 
+		data['autoMedGreen'] = autoMedGreen 
+		data['autoMinGreen'] = autoMinGreen 
+		data['autoMaxGreen'] = autoMaxGreen 
+		
 
-		# CHROMOSOME X
+		### CHROMOSOME X
 		data['chrXProbeCount'] = len(chrXControl)
 		print 'chrX %i probes' % (len(chrXControl))            
+		#Log2
 		chrXMean = np.mean(chrXControl)
 		chrXMed = np.median(chrXControl)
 		chrXMin = min(chrXControl)
 		chrXMax = max(chrXControl)		
-		print 'Mean %f median %f' % (chrXMean,chrXMed)
+		print '#ChrXLog2\nMean %f median %f' % (chrXMean,chrXMed)
 		print 'Min %f Max %f' % (chrXMin,chrXMax)
 		data['chrXMean'] = chrXMean
-		data['chrXMed'] = chrXMean
-		data['chrXMin'] = chrXMean
-		data['chrXMax'] = chrXMean
+		data['chrXMed'] = chrXMed
+		data['chrXMin'] = chrXMin
+		data['chrXMax'] = chrXMax
+		#Red
+		chrXMeanRed = np.mean(chrXControlRed)
+		chrXMedRed = np.median(chrXControlRed)
+		chrXMinRed = min(chrXControlRed)
+		chrXMaxRed = max(chrXControlRed)		
+		print '#ChrXRed\nMean Red = %f Median Red = %f' % (chrXMeanRed,chrXMedRed)
+		print 'Min Red = %f Max Red = %f' % (chrXMinRed,chrXMaxRed)
+		data['chrXMeanRed'] = chrXMeanRed
+		data['chrXMedRed'] = chrXMedRed
+		data['chrXMinRed'] = chrXMinRed
+		data['chrXMaxRed'] = chrXMaxRed
+		#Green
+		chrXMeanGreen = np.mean(chrXControlGreen)
+		chrXMedGreen = np.median(chrXControlGreen)
+		chrXMinGreen = min(chrXControlGreen)
+		chrXMaxGreen = max(chrXControlGreen)		
+		print '#AutoGreen\nMean Green = %f Median Green = %f' % (chrXMeanGreen,chrXMedGreen)
+		print 'Min Green = %f Max Green = %f' % (chrXMinGreen,chrXMaxGreen)
+		data['chrXMeanGreen'] = chrXMeanGreen
+		data['chrXMedGreen'] = chrXMedGreen
+		data['chrXMinGreen'] = chrXMinGreen
+		data['chrXMaxGreen'] = chrXMaxGreen
+
 
 		# CALCULATING CORRECTION FACTOR
 		corfactor = 0.0 - autoMean
-		print 'correction factor is %f' % corfactor
+		corfactorRed = 10.0 - autoMeanRed
+		corfactorGreen = 10.0 - autoMeanGreen
+		
+		print '\n#CorrectionFactors\nLog2 correction factor is %f' % corfactor
+		print 'Red correction factor is %f' % corfactorRed
+		print 'Green correction factor is %f' % corfactorGreen
+
 		print 'Applying to all data'
 		data['correctionFactor'] = corfactor
-		
+		data['correctionFactorRed'] = corfactorRed
+		data['correctionFactorGreen'] = corfactorGreen
+
 		for probe in probeDataList:
+			probe['uncorr_logratio'] = probe['log2']
+			probe['uncorr_Red'] = probe['log2Red']
+			probe['uncorr_Green'] = probe['log2Green']
 			probe['log2'] += corfactor
+			probe['log2Red'] += corfactorRed
+			probe['log2Green'] += corfactorGreen
+			
 		print 'Correction applied!\n\n'
 		
 		autoControl = []
@@ -328,38 +518,103 @@ for line in readmeFile:
 			if probe['probeClass'] == 'CNVControl':
 				if probe['isAuto'] is True:
 					autoControl.append(probe['log2'])
+					autoControlRed.append(probe['log2Red'])
+					autoControlGreen.append(probe['log2Green'])
 				else:
 					chrXControl.append(probe['log2'])
-		
+					chrXControlRed.append(probe['log2Red'])
+					chrXControlGreen.append(probe['log2Green'])
+												
+		#Includes corrected values
+		print '\n#Corrected Autosome Data'
 		print 'Autosomes %i probes' % (len(autoControl))            
+		#Log2
 		autoMean = np.mean(autoControl)
 		autoMed = np.median(autoControl)
 		autoMin = min(autoControl)
 		autoMax = max(autoControl)
-		print 'Mean %f median %f' % (autoMean,autoMed)
-		print 'Min %f Max %f' % (autoMin,autoMax)
+		print 'Mean Corrected Log2 %f Median Corrected Log2 %f' % (autoMean,autoMed)
+		print 'Min Corrected Log2 %f Max Corrected Log2 %f' % (autoMin,autoMax)
 		data['corr_autoMean'] = autoMean 
 		data['corr_autoMed'] = autoMed 
 		data['corr_autoMin'] = autoMin 
 		data['corr_autoMax'] = autoMax 
-		
+		#Red
+		autoMeanRed = np.mean(autoControlRed)
+		autoMedRed = np.median(autoControlRed)
+		autoMinRed = min(autoControlRed)
+		autoMaxRed = max(autoControlRed)
+		print 'Mean Corrected Red %f Median Corrected Red %f' % (autoMeanRed,autoMedRed)
+		print 'Min Corrected Red %f Max Corrected Red %f' % (autoMinRed,autoMaxRed)
+		data['corr_autoMeanRed'] = autoMeanRed 
+		data['corr_autoMedRed'] = autoMedRed
+		data['corr_autoMinRed'] = autoMinRed 
+		data['corr_autoMaxRed'] = autoMaxRed 
+		#Green
+		autoMeanGreen = np.mean(autoControlGreen)
+		autoMedGreen = np.median(autoControlGreen)
+		autoMinGreen = min(autoControlGreen)
+		autoMaxGreen = max(autoControlGreen)
+		print 'Mean Corrected Green %f Median Corrected Green %f' % (autoMeanGreen,autoMedGreen)
+		print 'Min Corrected Green %f Max Corrected Green %f' % (autoMinGreen,autoMaxGreen)
+		data['corr_autoMeanGreen'] = autoMeanGreen 
+		data['corr_autoMedGreen'] = autoMedGreen 
+		data['corr_autoMinGreen'] = autoMinGreen 
+		data['corr_autoMaxGreen'] = autoMaxGreen 
+
+
+		print '\n#Corrected chrX Data'		
 		print 'chrX %i probes' % (len(chrXControl))            
+		#Log 2
 		chrXMean = np.mean(chrXControl)
 		chrXMed = np.median(chrXControl)
 		chrXMin = min(chrXControl)
 		chrXMax = max(chrXControl)
-		print 'Mean %f median %f' % (chrXMean,chrXMed)
-		print 'Min %f Max %f' % (chrXMin,chrXMax)
+		print 'Mean Corrected Log2 %f Median Corrected Log2 %f' % (chrXMean,chrXMed)
+		print 'Min Corrected Log2 %f Max Corrected Log2 %f' % (chrXMin,chrXMax)
 		data['corr_chrXMean'] = chrXMean
-		data['corr_chrXMed'] = chrXMean
-		data['corr_chrXMin'] = chrXMean
-		data['corr_chrXMax'] = chrXMean
+		data['corr_chrXMed'] = chrXMed
+		data['corr_chrXMin'] = chrXMin
+		data['corr_chrXMax'] = chrXMax
+		# Red
+		chrXMeanRed = np.mean(chrXControlRed)
+		chrXMedRed = np.median(chrXControlRed)
+		chrXMinRed = min(chrXControlRed)
+		chrXMaxRed = max(chrXControlRed)
+		print 'Mean Corrected Red %f Median Corrected Red %f' % (chrXMeanRed,chrXMedRed)
+		print 'Min Corrected Red %f Max Corrected Red %f' % (chrXMinRed,chrXMaxRed)
+		data['corr_chrXMeanRed'] = chrXMeanRed
+		data['corr_chrXMedRed'] = chrXMedRed
+		data['corr_chrXMinRed'] = chrXMinRed
+		data['corr_chrXMaxRed'] = chrXMaxRed
+		#Green
+		chrXMeanGreen = np.mean(chrXControlGreen)
+		chrXMedGreen = np.median(chrXControlGreen)
+		chrXMinGreen = min(chrXControlGreen)
+		chrXMaxGreen = max(chrXControlGreen)
+		print 'Mean Corrected Green %f Median Corrected Green %f' % (chrXMeanGreen,chrXMedGreen)
+		print 'Min Corrected Green %f Max Corrected Green %f' % (chrXMinGreen,chrXMaxGreen)
+		data['corr_chrXMeanGreen'] = chrXMeanGreen
+		data['corr_chrXMedGreen'] = chrXMedGreen
+		data['corr_chrXMinGreen'] = chrXMinGreen
+		data['corr_chrXMaxGreen'] = chrXMaxGreen		
 		
 		print '\n___Stats___\n'
 		
+		#Log2
 		autoSd = np.std(autoControl)
-		print 'auto SD %f' % autoSd
+		print 'Log2 auto SD %f' % autoSd
 		data['autoSD'] = autoSd
+		#Red
+		autoSdRed = np.std(autoControlRed)
+		print 'Red auto SD %f' % autoSdRed
+		data['autoSDRed'] = autoSdRed
+		#Green
+		autoSdGreen = np.std(autoControlGreen)
+		print 'Green auto SD %f\n' % autoSdGreen
+		data['autoSDGreen'] = autoSdGreen		
+		
+		
 		
 		# 1.5 cutoff
 		
@@ -370,19 +625,23 @@ for line in readmeFile:
 		outFile = open('unsorted.bedGraph','w')
 		
 		for probe in probeDataList:
+			###Writing probe file with corrected log2, red, and green data. For R commands to process
+			p = [probe['sampleID'], probe['probeName'], probe['controlClass'], probe['probeType'], probe['chrom'],probe['startPos'],probe['endPos'],probe['log2'], probe['log2Red'], probe['log2Green'], probe['uncorr_logratio'], probe['uncorr_Red'], probe['uncorr_Green'], data['Sex']]
+			p = [str(i) for i in p]			
+			hd = '\t'.join(p) + '\n'
+			probeFile.write(hd)
+			
+			#For making bedGraph
 			if probe['chrom'] in ['NA','chrY']:
 				continue
 			if 'DROP' not in probe['probeName']:
 				continue
-				
 			d = [probe['chrom'],probe['startPos'],int(probe['endPos']),probe['log2']]
-			
-			d = [str(i) for i in d]
-			
-			nl = '\t'.join(d) + '\n'
-			outFile.write(nl)
+			d = [str(i) for i in d]			
+			nl = '\t'.join(d) + '\n'		
+			outFile.write(nl)					
 		outFile.close()
-		
+		probeFile.close()
 		
 		#sort cmd
 		cmd = 'sort -k1,1 -k2,2n unsorted.bedGraph > sorted.bedGraph'
@@ -395,13 +654,12 @@ for line in readmeFile:
 		print cmd
 		genutils.runCMD(cmd)
 		
-		# now to setup for a multi track hub
-		
-		
-		
-		#0-1.5 std grey
-		#1.5 to 2 black
-		#>2 green/red
+		##############
+		# now to setup for a multi track hub for DROPs		 
+		# 	0-1.5 std grey
+		# 	1.5 to 2 black
+		# 	>2 green/red
+		##############
 		
 		# GREY BIGWIG		
 		lower = autoMean - 1.5 * autoSd
@@ -427,6 +685,7 @@ for line in readmeFile:
 		
 		upper1 = autoMean + 1.5 * autoSd
 		upper2 = autoMean + 2.0 * autoSd
+		
 		
 		##SD Cut-offs
 		data['firstSDRange'] = '<' + str(upper)
@@ -486,16 +745,16 @@ for line in readmeFile:
 		genutils.runCMD(cmd)
 		
 		nl = make_stats_line(data)
-		statsFile.write(nl)		
-		
+		statsFile.write(nl)
+				
 		os.unlink('tmp.red.bedGraph')
 		os.unlink('tmp.green.bedGraph')
 		os.unlink('tmp.black.bedGraph')
 		os.unlink('tmp.grey.bedGraph')
-		os.unlink('unsorted.bedGraph')
-		#os.unlink('sorted.bedGraph')
-
-
+		os.unlink('unsorted.bedGraph')		
+		
+		
+		###NOVEL CONTIGS
 		# make bed graph file
 		novelFile = open('novel.unsorted.bedGraph','w')
 		
@@ -529,13 +788,12 @@ for line in readmeFile:
 		print cmd
 		genutils.runCMD(cmd)
 		
-		# now to setup for a multi track hub
-		
-		
-		
-		#0-1.5 std grey
-		#1.5 to 2 black
-		#>2 green/red
+		##############
+		# now to setup for a multi track hub		
+		# 	0-1.5 std grey
+		# 	1.5 to 2 black
+		# 	>2 green/red
+		##############
 		
 		# GREY BIGWIG		
 		lower = autoMean - 1.5 * autoSd
@@ -618,8 +876,8 @@ for line in readmeFile:
 		print cmd
 		genutils.runCMD(cmd)
 		
-		nl = make_stats_line(data)
-		statsFile.write(nl)		
+		#nl = make_stats_line(data)
+		#statsFile.write(nl)		
 		
 		os.unlink('tmp.red.bedGraph')
 		os.unlink('tmp.green.bedGraph')
@@ -628,8 +886,14 @@ for line in readmeFile:
 		os.unlink('novel.unsorted.bedGraph')
 		#os.unlink('sorted.bedGraph')
 		
+		rfile = options.directory + data['sample'] + '_Rcmds.r'
+		print 'writing R commands to', rfile
+		rFile = open(rfile, 'w')
+		write_R_cmds(data)
+		
 		#if arrayCount == 1:
 			#break	
+		
 
 
 print '\n\nTotal arrays read...', arrayCount
@@ -649,4 +913,4 @@ print 'DONE!!\n'
 
 
 
-        
+
