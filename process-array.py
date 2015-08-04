@@ -4,6 +4,7 @@ import numpy as np
 import genutils
 import os
 import re
+from collections import defaultdict
 from optparse import  OptionParser
 
 
@@ -27,7 +28,17 @@ if options.input is None:
 if options.directory is None:
     parser.error('output probe file name not given')
 
-
+###############################################################################
+def write_stats_header(statsFile):
+	#write header for stats file 
+	statsFile.write('SampleID\tDateScanned\tScanNumber\tSlideNumber\tSex\tOrigin\tCanineType\tDLRS\tRawDataFile\t')
+	statsFile.write('AutosomeMean\tAutosomeMedian\tAutosomeMin\tAutosomeMax\t')
+	statsFile.write('ChrXMean\tChrXMedian\tChrXMin\tChrXMax\t')
+	statsFile.write('CorrectionFactor\t')
+	statsFile.write('CorrectedAutosomeMean\tCorrectedAutosomeMedian\tCorrectedAutosomeMin\tCorrectedAutosomeMax\t')
+	statsFile.write('CorrectedChrXMean\tCorrectedChrXMedian\tCorrectedChrXMin\tCorrectedChrXMax\t')
+	statsFile.write('AutosomalSD\tLessThan1.5SDRange\tBetween1.5-2SDRange\tGreaterThan2SDRange\t')
+	statsFile.write('Mean_Corrected_TestIntensity(Log2Red)\tMedian_Corrected_TestIntensity(Log2Red)\tMean_Corrected_RefIntensity(Log2Green)\tMedian_Corrected_RefIntensity(Log2Green)\n')
 ###############################################################################
 def process_array_line(line):
 	myData = {}
@@ -88,7 +99,6 @@ def process_array_line(line):
 		myData['probeType'] = 'NUMT'
 		
 	return myData
-
 ###############################################################################    
 def make_track_file(line):
 	#canFam3 track files
@@ -242,12 +252,16 @@ def make_stats_line(data):
 	nl.append(data['lowerSDRange']) # = lower1-upper1 (1.5 SD < x < 2 SD)
 	nl.append(data['upperSDRange']) # = lower2-upper2 (x >2 SD)
 	
+	nl.append(mean_testIntensity) # mean test (corrected log2red) intensity
+	nl.append(median_testIntensity) # median test (corrected log2red) intensity
+	nl.append(mean_refIntensity) # mean test (corrected log2red) intensity
+	nl.append(median_refIntensity) # mean test (corrected log2red) intensity
+
 	nl = [str(j) for j in nl]
 	nl = '\t'.join(nl) + '\n'
 	return nl	
 ###############################################################################
 def write_R_cmds(data):
-	print 'test'
 	rFile.write('require(sm)\n')
 	rFile.write('require(vioplot)\n')
 
@@ -305,12 +319,12 @@ def write_R_cmds(data):
 	rFile.write('plot(2,2,xlim=c(0,7),ylim=range(c(sexRed,autoRed,nonRed,sexGreen,autoGreen,nonGreen)),type="n", xlab="Control Types",ylab="Corrected Log2 Probe Intensities",axes=FALSE)\n')
 	rFile.write('axis(side=1,at=1:6,labels=c("SexChr\\n(Red)", "Auto\\n(Red)", "Non\\n(Red)", "SexChr\\n(Green)", "Auto\\n(Green)", "Non\\n(Green)"), cex.main=0.75, cex.lab=0.55, cex.axis=0.55)\n')
 	rFile.write('axis(side=2)\n')
-	rFile.write('boxplot(sexRed, at = 1, add=TRUE)\n')
-	rFile.write('boxplot(autoRed, at = 2, add=TRUE)\n')
-	rFile.write('boxplot(nonRed, at = 3, add = TRUE)\n')
-	rFile.write('boxplot(sexGreen, at = 4, add=TRUE)\n')
-	rFile.write('boxplot(autoGreen, at = 5, add=TRUE)\n')
-	rFile.write('boxplot(nonGreen, at = 6, add = TRUE, main = "Corrected Log2 Red/Green Intensities for %s (%s)")\n' % (data['sample'], data['Sex']))
+	rFile.write('boxplot(sexRed, at = 1, col=c("tomato2"), add=TRUE)\n')
+	rFile.write('boxplot(autoRed, at = 2, col=c("tomato3"), add=TRUE)\n')
+	rFile.write('boxplot(nonRed, at = 3, col=c("tomato4"), add = TRUE)\n')
+	rFile.write('boxplot(sexGreen, at = 4,col=c("palegreen2"), add=TRUE)\n')
+	rFile.write('boxplot(autoGreen, at = 5, col=c("palegreen3"), add=TRUE)\n')
+	rFile.write('boxplot(nonGreen, at = 6, col=c("palegreen4"), add = TRUE, main = "Corrected Log2 Red/Green Intensities for %s (%s)")\n' % (data['sample'], data['Sex']))
 
 	rFile.write('# Violin Plots\n')
 	rFile.write('plot(2,2,xlim=c(0,7),range(c(sexRed,autoRed,nonRed,sexGreen,autoGreen,nonGreen)),type="n", xlab="Control Types",ylab="Corrected Log2 Probe Intensities",axes=FALSE, main = "Corrected Red and Green Probe Intensities for %s (%s)")\n' % (data['sample'], data['Sex']))
@@ -326,25 +340,30 @@ def write_R_cmds(data):
 	rFile.write('title("Corrected Red and Green Probe Intensities for %s (%s)")\n' % (data['sample'], data['Sex']))
 	rFile.write('dev.off()\n')	
 ###############################################################################        
+def print_dictionary(d):
+	k = d.keys()
+	k.sort()
+	for i in k:
+		print i,d[i]
+###############################################################################        
 
 readme_file = options.input 
 readmeFile = open(readme_file, 'r')
 
 statsfile = options.input + '_STATS'
 statsFile = open(statsfile, 'w')
-#write header
-statsFile.write('SampleID\tDateScanned\tScanNumber\tSlideNumber\tSex\tOrigin\tCanineType\tDLRS\tRawDataFile\t')
-statsFile.write('AutosomeMean\tAutosomeMedian\tAutosomeMin\tAutosomeMax\t')
-statsFile.write('ChrXMean\tChrXMedian\tChrXMin\tChrXMax\t')
-statsFile.write('CorrectionFactor\t')
-statsFile.write('CorrectedAutosomeMean\tCorrectedAutosomeMedian\tCorrectedAutosomeMin\tCorrectedAutosomeMax\t')
-statsFile.write('CorrectedChrXMean\tCorrectedChrXMedian\tCorrectedChrXMin\tCorrectedChrXMax\t')
-statsFile.write('AutosomalSD\tLessThan1.5SDRange\tBetween1.5-2SDRange\tGreaterThan2SDRange\n')
-lineNumber = 0 
+write_stats_header(statsFile)
 
 trackDirectory = options.directory + 'UCSCTracks/'
 novelDirectory = options.directory + 'NovelTracks/'
 
+sampleDict = {}
+probeDict = {}
+redTable = []
+greenTable = []
+log2Table = []
+
+lineNumber = 0 
 arrayCount = 0 
 
 for line in readmeFile:
@@ -353,7 +372,6 @@ for line in readmeFile:
 	lineNumber += 1
 	
 	data = {}
-	
 	if lineNumber > 1:
 		sample = line[0]
 		arrayCount += 1
@@ -377,7 +395,7 @@ for line in readmeFile:
 		inFile = open(infile, 'r')
 		
 		print '\n\n_____________________________________\n'  
-		print '\n\nReading parsed probe intensity data from', infile
+		print '\n\nReading parsed probe intensity data from file:', infile
 		
 		probeDataList = []
 		for line in inFile:
@@ -386,13 +404,13 @@ for line in readmeFile:
 			if line[0] == 'SampleID':
 				continue
 			myProbe = process_array_line(line)
-			probeDataList.append(myProbe)
+			probeDataList.append(myProbe)			
 		inFile.close()
-		
+				
 		print '\nProcessing probe data for sample\n',  sample
 		print 'Read in for %i probes' % len(probeDataList)
 		
-		#log2
+		#log2 values
 		autoControl = []
 		chrXControl = []
 		#probe intensities log2 red/green
@@ -412,7 +430,7 @@ for line in readmeFile:
 					chrXControlRed.append(probe['log2Red'])
 					chrXControlGreen.append(probe['log2Green'])
 		
-		### AUTOSOMES
+		### AUTOSOMES ###
 		data['autoProbeCount'] = len(autoControl)
 		print 'Autosomes %i probes' % (len(autoControl))            
 		#Log2
@@ -450,10 +468,10 @@ for line in readmeFile:
 		data['autoMaxGreen'] = autoMaxGreen 
 		
 
-		### CHROMOSOME X
+		### CHROMOSOME X ###
 		data['chrXProbeCount'] = len(chrXControl)
 		print 'chrX %i probes' % (len(chrXControl))            
-		#Log2
+		#Log2 Values
 		chrXMean = np.mean(chrXControl)
 		chrXMed = np.median(chrXControl)
 		chrXMin = min(chrXControl)
@@ -464,7 +482,7 @@ for line in readmeFile:
 		data['chrXMed'] = chrXMed
 		data['chrXMin'] = chrXMin
 		data['chrXMax'] = chrXMax
-		#Red
+		#Red Intensities
 		chrXMeanRed = np.mean(chrXControlRed)
 		chrXMedRed = np.median(chrXControlRed)
 		chrXMinRed = min(chrXControlRed)
@@ -475,7 +493,7 @@ for line in readmeFile:
 		data['chrXMedRed'] = chrXMedRed
 		data['chrXMinRed'] = chrXMinRed
 		data['chrXMaxRed'] = chrXMaxRed
-		#Green
+		#Green Intensities
 		chrXMeanGreen = np.mean(chrXControlGreen)
 		chrXMedGreen = np.median(chrXControlGreen)
 		chrXMinGreen = min(chrXControlGreen)
@@ -502,6 +520,9 @@ for line in readmeFile:
 		data['correctionFactorRed'] = corfactorRed
 		data['correctionFactorGreen'] = corfactorGreen
 
+		testIntensity = []
+		refIntensity = []
+				
 		for probe in probeDataList:
 			probe['uncorr_logratio'] = probe['log2']
 			probe['uncorr_Red'] = probe['log2Red']
@@ -510,6 +531,14 @@ for line in readmeFile:
 			probe['log2Red'] += corfactorRed
 			probe['log2Green'] += corfactorGreen
 			
+			testIntensity.append(probe['log2Red'])
+			refIntensity.append(probe['log2Green'])
+		
+		mean_testIntensity = np.mean(testIntensity)
+		median_testIntensity = np.median(testIntensity)
+		mean_refIntensity = np.mean(refIntensity)
+		median_refIntensity = np.median(refIntensity)
+								
 		print 'Correction applied!\n\n'
 		
 		autoControl = []
@@ -524,11 +553,13 @@ for line in readmeFile:
 					chrXControl.append(probe['log2'])
 					chrXControlRed.append(probe['log2Red'])
 					chrXControlGreen.append(probe['log2Green'])
-												
+			
+		
+		### AUTOSOMES ###
 		#Includes corrected values
 		print '\n#Corrected Autosome Data'
 		print 'Autosomes %i probes' % (len(autoControl))            
-		#Log2
+		#Log2 Values
 		autoMean = np.mean(autoControl)
 		autoMed = np.median(autoControl)
 		autoMin = min(autoControl)
@@ -539,7 +570,7 @@ for line in readmeFile:
 		data['corr_autoMed'] = autoMed 
 		data['corr_autoMin'] = autoMin 
 		data['corr_autoMax'] = autoMax 
-		#Red
+		#Red Intensities
 		autoMeanRed = np.mean(autoControlRed)
 		autoMedRed = np.median(autoControlRed)
 		autoMinRed = min(autoControlRed)
@@ -550,7 +581,7 @@ for line in readmeFile:
 		data['corr_autoMedRed'] = autoMedRed
 		data['corr_autoMinRed'] = autoMinRed 
 		data['corr_autoMaxRed'] = autoMaxRed 
-		#Green
+		#Green Intensities
 		autoMeanGreen = np.mean(autoControlGreen)
 		autoMedGreen = np.median(autoControlGreen)
 		autoMinGreen = min(autoControlGreen)
@@ -562,10 +593,10 @@ for line in readmeFile:
 		data['corr_autoMinGreen'] = autoMinGreen 
 		data['corr_autoMaxGreen'] = autoMaxGreen 
 
-
+		### CHR X ###
 		print '\n#Corrected chrX Data'		
 		print 'chrX %i probes' % (len(chrXControl))            
-		#Log 2
+		#Log2 Values
 		chrXMean = np.mean(chrXControl)
 		chrXMed = np.median(chrXControl)
 		chrXMin = min(chrXControl)
@@ -576,7 +607,7 @@ for line in readmeFile:
 		data['corr_chrXMed'] = chrXMed
 		data['corr_chrXMin'] = chrXMin
 		data['corr_chrXMax'] = chrXMax
-		# Red
+		# Red Intensities
 		chrXMeanRed = np.mean(chrXControlRed)
 		chrXMedRed = np.median(chrXControlRed)
 		chrXMinRed = min(chrXControlRed)
@@ -587,7 +618,7 @@ for line in readmeFile:
 		data['corr_chrXMedRed'] = chrXMedRed
 		data['corr_chrXMinRed'] = chrXMinRed
 		data['corr_chrXMaxRed'] = chrXMaxRed
-		#Green
+		#Green Intensities
 		chrXMeanGreen = np.mean(chrXControlGreen)
 		chrXMedGreen = np.median(chrXControlGreen)
 		chrXMinGreen = min(chrXControlGreen)
@@ -598,39 +629,29 @@ for line in readmeFile:
 		data['corr_chrXMedGreen'] = chrXMedGreen
 		data['corr_chrXMinGreen'] = chrXMinGreen
 		data['corr_chrXMaxGreen'] = chrXMaxGreen		
-		
-		print '\n___Stats___\n'
-		
-		#Log2
+			
+		#Log2 Values
 		autoSd = np.std(autoControl)
 		print 'Log2 auto SD %f' % autoSd
 		data['autoSD'] = autoSd
-		#Red
+		#Red Intensities
 		autoSdRed = np.std(autoControlRed)
 		print 'Red auto SD %f' % autoSdRed
 		data['autoSDRed'] = autoSdRed
-		#Green
+		#Green Intensities
 		autoSdGreen = np.std(autoControlGreen)
 		print 'Green auto SD %f\n' % autoSdGreen
 		data['autoSDGreen'] = autoSdGreen		
 		
+		outFile = open('unsorted.bedGraph','w') # make bed graph file
 		
-		
-		# 1.5 cutoff
-		
-		
-		# make simple bed graph
-		
-		# make bed graph file
-		outFile = open('unsorted.bedGraph','w')
-		
-		for probe in probeDataList:
+		for probe in probeDataList:			
 			###Writing probe file with corrected log2, red, and green data. For R commands to process
 			p = [probe['sampleID'], probe['probeName'], probe['controlClass'], probe['probeType'], probe['chrom'],probe['startPos'],probe['endPos'],probe['log2'], probe['log2Red'], probe['log2Green'], probe['uncorr_logratio'], probe['uncorr_Red'], probe['uncorr_Green'], data['Sex']]
 			p = [str(i) for i in p]			
 			hd = '\t'.join(p) + '\n'
 			probeFile.write(hd)
-			
+						
 			#For making bedGraph
 			if probe['chrom'] in ['NA','chrY']:
 				continue
@@ -642,7 +663,7 @@ for line in readmeFile:
 			outFile.write(nl)					
 		outFile.close()
 		probeFile.close()
-		
+				
 		#sort cmd
 		cmd = 'sort -k1,1 -k2,2n unsorted.bedGraph > sorted.bedGraph'
 		print cmd
@@ -655,10 +676,10 @@ for line in readmeFile:
 		genutils.runCMD(cmd)
 		
 		##############
-		# now to setup for a multi track hub for DROPs		 
-		# 	0-1.5 std grey
-		# 	1.5 to 2 black
-		# 	>2 green/red
+		# 	Now to setup for a multi track hub for DROPs:		 
+		# 	0-1.5 std = Grey
+		# 	1.5-2.0 std = Black
+		# 	>2.0 std = Green/Red
 		##############
 		
 		# GREY BIGWIG		
@@ -678,21 +699,15 @@ for line in readmeFile:
 		cmd = 'bedGraphToBigWig tmp.grey.bedGraph %s %s%s_grey.bw' % (chromSizesFile, trackDirectory, sample)
 		print cmd
 		genutils.runCMD(cmd)
-		
-		
+			
 		lower1 = autoMean - 1.5 * autoSd
-		lower2 = autoMean - 2.0 * autoSd
-		
+		lower2 = autoMean - 2.0 * autoSd		
 		upper1 = autoMean + 1.5 * autoSd
-		upper2 = autoMean + 2.0 * autoSd
-		
-		
+		upper2 = autoMean + 2.0 * autoSd		
 		##SD Cut-offs
 		data['firstSDRange'] = '<' + str(upper)
 		data['lowerSDRange'] = '+/-' + str(upper1)
 		data['upperSDRange'] = '+/-' + str(upper2)
-
-
 
 		# BLACK BIGWIG		
 		outFile = open('tmp.black.bedGraph','w')
@@ -754,9 +769,8 @@ for line in readmeFile:
 		os.unlink('unsorted.bedGraph')		
 		
 		
-		###NOVEL CONTIGS
-		# make bed graph file
-		novelFile = open('novel.unsorted.bedGraph','w')
+		### NOVEL CONTIGS ###
+		novelFile = open('novel.unsorted.bedGraph','w') # make bed graph file
 		
 		for probe in probeDataList:
 			if probe['chrom'] in ['NA']:
@@ -768,16 +782,13 @@ for line in readmeFile:
 			if probe['chrom'] == 'chrX':
 				continue				
 			else:				
-				d = [probe['chrom'],probe['startPos'],int(probe['endPos']),probe['log2']]
-			
-				d = [str(i) for i in d]
-			
+				d = [probe['chrom'],probe['startPos'],int(probe['endPos']),probe['log2']]			
+				d = [str(i) for i in d]			
 				nl = '\t'.join(d) + '\n'
 				novelFile.write(nl)
 		novelFile.close()
-		
-		#sort cmd
-		cmd = 'sort -k1,1 -k2,2n novel.unsorted.bedGraph > novel.sorted.bedGraph'
+			
+		cmd = 'sort -k1,1 -k2,2n novel.unsorted.bedGraph > novel.sorted.bedGraph' #sort cmd
 		print cmd
 		genutils.runCMD(cmd)
 		
@@ -789,10 +800,10 @@ for line in readmeFile:
 		genutils.runCMD(cmd)
 		
 		##############
-		# now to setup for a multi track hub		
-		# 	0-1.5 std grey
-		# 	1.5 to 2 black
-		# 	>2 green/red
+		# 	Now to setup for a multi track hub for DROPs:		 
+		# 	0-1.5 std = Grey
+		# 	1.5-2.0 std = Black
+		# 	>2.0 std = Green/Red
 		##############
 		
 		# GREY BIGWIG		
@@ -812,11 +823,9 @@ for line in readmeFile:
 		cmd = 'bedGraphToBigWig tmp.grey.bedGraph %s %s%s_grey.bw' % (novel_chromSizesFile, novelDirectory, sample)
 		print cmd
 		genutils.runCMD(cmd)
-		
-		
+				
 		lower1 = autoMean - 1.5 * autoSd
-		lower2 = autoMean - 2.0 * autoSd
-		
+		lower2 = autoMean - 2.0 * autoSd		
 		upper1 = autoMean + 1.5 * autoSd
 		upper2 = autoMean + 2.0 * autoSd
 		
@@ -875,10 +884,7 @@ for line in readmeFile:
 		cmd = 'bedGraphToBigWig tmp.red.bedGraph %s %s%s_red.bw' % (novel_chromSizesFile, novelDirectory, sample)
 		print cmd
 		genutils.runCMD(cmd)
-		
-		#nl = make_stats_line(data)
-		#statsFile.write(nl)		
-		
+				
 		os.unlink('tmp.red.bedGraph')
 		os.unlink('tmp.green.bedGraph')
 		os.unlink('tmp.black.bedGraph')
@@ -891,10 +897,8 @@ for line in readmeFile:
 		rFile = open(rfile, 'w')
 		write_R_cmds(data)
 		
-		#if arrayCount == 1:
-			#break	
-		
-
+		#if arrayCount == 2:
+			#break		
 
 print '\n\nTotal arrays read...', arrayCount
 
@@ -909,8 +913,4 @@ print cmd
 genutils.runCMD(cmd)
 
 print 'DONE!!\n'
-
-
-
-
 
